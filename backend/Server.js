@@ -21,38 +21,77 @@ const pino = require('pino');
 const { GoogleGenAI } = require('@google/genai');
 // Importa o módulo nativo path para manipulação de caminhos de diretórios e arquivos
 const path = require('path');
+// Importa o módulo nativo fs (File System) para verificar a existência de pastas e arquivos
+const fs = require('fs');
+// Importa o módulo nativo os para capturar os endereços de IP da máquina
+const os = require('os');
 
 // Inicializa a aplicação Express
 const app = express();
+
+// Configura o Express para confiar em proxies reversos (essencial para Cloudflare Tunnel / Nginx em https://sema.emersonsilv.win)
+app.set('trust proxy', true);
+
 // Define a porta do servidor (lê da variável de ambiente PORT ou assume a porta 3010 por padrão)
 const port = process.env.PORT || 3010;
+// Define o endereço base do sistema
+const BASE_URL = process.env.BASE_URL || 'https://sema.emersonsilv.win';
 
-// Habilita o CORS em todas as rotas do Express
-app.use(cors());
+// Habilita o CORS permitindo o domínio oficial e origens locais da rede
+app.use(cors({
+  origin: [
+    'https://sema.emersonsilv.win',
+    'http://localhost:3000',
+    'http://localhost:3010',
+    /^https?:\/\/192\.168\.\d+\.\d+(:\d+)?$/, // Permite IPs locais da faixa 192.168.x.x
+    /^https?:\/\/10\.\d+\.\d+\.\d+(:\d+)?$/      // Permite IPs locais da faixa 10.x.x.x
+  ],
+  credentials: true
+}));
+
 // Configura o Express para interpretar payloads de requisição no formato JSON
 app.use(bodyParser.json());
 // Configura o Express para interpretar dados enviados via formulários (urlencoded)
 app.use(bodyParser.urlencoded({ extended: true }));
 
+// ==========================================
+// VERIFICAÇÃO DE COMPORTAMENTO (DIST / AMBIENTE)
+// ==========================================
+const distPath = path.join(__dirname, 'dist');
+const hasDistFolder = fs.existsSync(distPath);
+
+// Verificador de comportamento do sistema
+const sistemaComportamento = hasDistFolder ? 'SISTEMA DE PRODUÇÃO' : 'SISTEMA DE HOMOLOGAÇÃO';
+
+if (hasDistFolder) {
+  // Servir os arquivos estáticos da pasta "dist" do React (Se a pasta existir)
+  app.use(express.static(distPath));
+}
+
 // Inicializa o SDK do Google Gen AI (lê automaticamente a chave GEMINI_API_KEY do arquivo .env)
 const ai = new GoogleGenAI();
+const aiStatusFuncional = !!ai; // Valida se a instância da IA foi carregada corretamente
 
-// Cria a conexão persistente com o banco de dados MySQL utilizando as credenciais de configuração
-const db = mysql.createConnection({
+// Cria o pool de conexões com o banco de dados MySQL utilizando as credenciais de configuração (Evita queda de conexão inativa)
+const db = mysql.createPool({
   host: process.env.DB_HOST || '127.0.0.1',
-  user: process.env.DB_USER || 'admin',
-  password: process.env.DB_PASSWORD || 'admin@123',
-  database: process.env.DB_NAME || 'wacursos',
-  port: process.env.DB_PORT || 3306
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  port: process.env.DB_PORT,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
 });
 
-// Executa a conexão oficial com o banco MySQL e valida se ocorreu algum erro
-db.connect((err) => {
+// Executa a conexão oficial com o banco MySQL testando o Pool e valida se ocorreu algum erro
+db.getConnection((err, connection) => {
   if (err) {
     console.error('❌ Erro ao conectar no banco:', err);
-    return;
+  } else {
+    console.log('✅ Conectado ao banco de dados MySQL via Pool (Banco encontrado com sucesso!).');
+    connection.release(); // Libera a conexão de teste de volta para o Pool
   }
-  console.log('✅ Conectado ao banco de dados MySQL.');
 });
 
 // ==========================================
@@ -107,6 +146,12 @@ async function iniciarWhatsAppUsuario(userId, resQR = null) {
       const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
       activeSessions[userId].status = 'desconectado';
       activeSessions[userId].qr = null;
+      
+      // Limpa os listeners do socket antigo para evitar memory leak de sockets zumbis na memória
+      if (activeSessions[userId].sock) {
+          activeSessions[userId].sock.ev.removeAllListeners();
+      }
+
       console.log(`🔄 Conexão WhatsApp do usuário ${userId} fechada. Reconectando...`, shouldReconnect);
       // Se puder reconectar, chama a função recursivamente
       if (shouldReconnect) {
@@ -197,7 +242,8 @@ app.post('/gerar-template-ia', async (req, res) => {
 
     // Se houver uma instrução de ajuste/refinamento posterior, adiciona ao prompt
     if (iteracao) {
-      promptText += `\n- Ajuste/Iteração solicitada pelo usuário para esta nova versão: ${iteracao}`;
+      promptText += `\nAjuste/Iteração solicitada pelo usuário para esta nova versão: 
+${iteracao}`;
     }
 
     // Define a regra estrita de retorno em formato JSON puro
@@ -330,19 +376,24 @@ app.post('/insert', (req, res) => {
 
 // Rota HTTP GET para listar templates aplicando restrições de perfil (Admin vê tudo, operador vê os seus)
 app.get('/templates', (req, res) => {
-  const { usuario_id, perfil_logado, usuario_logado_id } = req.query;
-  let query = `SELECT t.*, u.login AS autor_login, u.nome AS autor_nome FROM templates t LEFT JOIN usuarios u ON t.usuario_id = u.id`;
+  const { usuario_id, perfil_logado, usuario_logado_id, apenas_ativos } = req.query;
+  let query = `SELECT t.*, u.login AS autor_login, u.nome AS autor_nome FROM templates t LEFT JOIN usuarios u ON t.usuario_id = u.id WHERE 1=1`;
   const params = [];
 
   // Se o solicitante não for admin, restringe a busca apenas aos templates do próprio usuário
   if (perfil_logado && perfil_logado !== 'admin') {
     if (!usuario_logado_id) return res.status(403).json({ message: 'Acesso negado.' });
-    query += ' WHERE t.usuario_id = ?';
+    query += ' AND t.usuario_id = ?';
     params.push(usuario_logado_id);
   } else if (usuario_id) {
     // Se o admin passou um filtro específico de usuário via query string
-    query += ' WHERE t.usuario_id = ?';
+    query += ' AND t.usuario_id = ?';
     params.push(usuario_id);
+  }
+
+  // Filtro opcional para retornar apenas templates ativos se solicitado
+  if (apenas_ativos === 'true') {
+    query += ' AND t.ativo = 1';
   }
 
   query += ' ORDER BY t.id';
@@ -371,6 +422,47 @@ app.put('/update/:id', (req, res) => {
     if (err) return res.status(500).json({ error: err });
     res.json({ message: 'Template atualizado com sucesso!' });
   });
+});
+
+// Rota HTTP POST para envio de feedback/sugestões pelo formulário de Ajuda
+app.post('/enviar-ajuda-feedback', async (req, res) => {
+  const { nome, emailUsuario, mensagem } = req.body;
+  if (!mensagem || !emailUsuario) {
+    return res.status(400).json({ message: 'E-mail e mensagem são obrigatórios.' });
+  }
+
+  try {
+    // Busca um usuário administrador ou remetente padrão no banco para puxar as credenciais do Gmail configuradas
+    db.query('SELECT * FROM usuarios WHERE perfil = "admin" LIMIT 1', async (err, results) => {
+      if (err || results.length === 0) {
+        return res.status(500).json({ message: 'Nenhum administrador com configuração de e-mail encontrada.' });
+      }
+
+      const adminUser = results[0];
+      const transporter = nodemailer.createTransport({
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false,
+        auth: {
+          user: adminUser.gmail_user || adminUser.email,
+          pass: adminUser.gmail_pass
+        }
+      });
+
+      await transporter.sendMail({
+        from: `"${nome || 'Usuário do Sistema'}" <${adminUser.gmail_user || adminUser.email}>`,
+        to: 'emersonsilv@gmail.com',
+        cc: 'emerson.silva463@etec.sp.gov.br',
+        subject: `🛠️ [Feedback / Sugestão - Sistema SEMA] Enviado por: ${emailUsuario}`,
+        text: `Nome: ${nome}\nE-mail de Contato: ${emailUsuario}\n\nMensagem / Sugestão:\n${mensagem}`
+      });
+
+      res.json({ message: 'Feedback enviado com sucesso para os desenvolvedores!' });
+    });
+  } catch (error) {
+    console.error('Erro ao enviar feedback de ajuda:', error);
+    res.status(500).json({ message: 'Erro ao enviar e-mail de feedback.' });
+  }
 });
 
 // ==========================================
@@ -441,26 +533,28 @@ app.get('/listarWhatsapp', (req, res) => {
 // ==========================================
 // ROTA DE DISPARO INTELIGENTE COM STREAMING (SSE)
 // ==========================================
-// Rota HTTP POST que executa disparos em lote utilizando Server-Sent Events (SSE) para feedback em tempo real
 app.post('/enviar-lote-streaming', async (req, res) => {
   const { contatos, templateId, usuario_id } = req.body;
 
-  // Valida se os dados obrigatórios foram enviados na requisição
   if (!contatos || !Array.isArray(contatos) || contatos.length === 0 || !templateId) {
     return res.status(400).json({ message: 'Lista de contatos e ID do template são obrigatórios.' });
   }
 
-  // Configura os headers HTTP para manter uma conexão de streaming aberta com o cliente
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
 
-  // Função auxiliar para enviar eventos estruturados (SSE) de volta ao frontend
   const sendEvent = (data) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
+  
+  // Monitora se o cliente fechou a aba ou cancelou o disparo para abortar o loop
+  let clienteConectado = true;
+  req.on('close', () => {
+    console.log('⚠️ Cliente fechou a conexão de streaming. Abortando envios...');
+    clienteConectado = false;
+  });
 
-  // Busca no banco de dados as credenciais do usuário remetente responsável pelo disparo
   db.query('SELECT * FROM usuarios WHERE id = ?', [usuario_id], async (errUser, userResults) => {
     if (errUser || userResults.length === 0) {
       sendEvent({ tipo: 'erro', mensagem: 'Usuário remetente não encontrado.' });
@@ -469,7 +563,6 @@ app.post('/enviar-lote-streaming', async (req, res) => {
 
     const usuarioRemetente = userResults[0];
     
-    // Configura o transporte do Nodemailer dinamicamente usando a conta de e-mail e senha de app do usuário
     const userTransporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
       port: 587,
@@ -480,7 +573,6 @@ app.post('/enviar-lote-streaming', async (req, res) => {
       }
     });
 
-    // Busca o template selecionado no banco de dados
     db.query('SELECT * FROM templates WHERE id = ?', [templateId], async (err, results) => {
       if (err || results.length === 0) {
         sendEvent({ tipo: 'erro', mensagem: 'Template não encontrado ou erro no banco.' });
@@ -489,24 +581,25 @@ app.post('/enviar-lote-streaming', async (req, res) => {
 
       const template = results[0];
       const userId = usuario_id || template.usuario_id || null;
-      // Recupera a instância do socket do Baileys correspondente à sessão ativa do usuário
       const sockUsuario = activeSessions[usuario_id]?.sock;
 
-      // Emite o evento inicial informando o total de contatos da lista
       sendEvent({ tipo: 'inicio', total: contatos.length });
 
-      // Loop iterativo para processar o envio para cada contato da lista
       for (let i = 0; i < contatos.length; i++) {
+        // Se o cliente desconectar no meio do processo, o loop é interrompido
+        if (!clienteConectado) {
+            console.log('🛑 Disparo interrompido pelo usuário no contato: ' + i);
+            break;
+        }
+
         const contato = contatos[i];
         const nomeContato = contato.nome || 'Cliente';
         const emailContato = contato.email; 
         const tel1 = contato.telefone1 || contato.tel1;
         const tel2 = contato.telefone2 || contato.tel2;
 
-        // Monta o texto final da mensagem personalizada com o nome do contato
         const mensagemPersonalizada = `Olá ${nomeContato} ${template.mensagem}`;
 
-        // Emite o evento de progresso indicando qual contato está sendo processado no momento
         sendEvent({ 
           tipo: 'progresso', 
           indice: i + 1, 
@@ -514,7 +607,6 @@ app.post('/enviar-lote-streaming', async (req, res) => {
           nome: nomeContato 
         });
 
-        // Se o contato possui e-mail e o usuário remetente cadastrou a senha de app, dispara o e-mail
         if (emailContato && usuarioRemetente.gmail_pass) {
           try {
             await userTransporter.sendMail({
@@ -524,10 +616,12 @@ app.post('/enviar-lote-streaming', async (req, res) => {
               text: mensagemPersonalizada
             });
 
-            // Registra o envio bem-sucedido de e-mail no banco de dados
             await new Promise((resolve) => {
               const queryEmail = `INSERT INTO email (nome, email1, assunto, menssagem, usuario_id) VALUES (?, ?, ?, ?, ?)`;
-              db.query(queryEmail, [nomeContato, emailContato, template.assunto, mensagemPersonalizada, userId], () => resolve());
+              db.query(queryEmail, [nomeContato, emailContato, template.assunto, mensagemPersonalizada, userId], (err) => {
+                  if (err) console.error("Erro ao inserir email no banco:", err);
+                  resolve(); // Resolve mesmo com erro para não travar o loop
+              });
             });
 
             sendEvent({ tipo: 'sucesso', canal: 'email', destinatario: emailContato, nome: nomeContato });
@@ -536,16 +630,17 @@ app.post('/enviar-lote-streaming', async (req, res) => {
           }
         }
 
-        // Se o contato possui telefone 1 e a sessão do Baileys do usuário está conectada, dispara o WhatsApp 1
         if (tel1 && sockUsuario) {
           try {
             const jid1 = formatarNumeroWhatsApp(tel1);
             await sockUsuario.sendMessage(jid1, { text: mensagemPersonalizada });
 
-            // Registra o envio de WhatsApp 1 no banco de dados
             await new Promise((resolve) => {
               const queryWp1 = `INSERT INTO whatsapp (nome, tel1, menssagem, usuario_id) VALUES (?, ?, ?, ?)`;
-              db.query(queryWp1, [nomeContato, tel1, mensagemPersonalizada, userId], () => resolve());
+              db.query(queryWp1, [nomeContato, tel1, mensagemPersonalizada, userId], (err) => {
+                  if (err) console.error("Erro ao inserir wp1 no banco:", err);
+                  resolve(); // Resolve mesmo com erro para não travar o loop
+              });
             });
 
             sendEvent({ tipo: 'sucesso', canal: 'whatsapp1', destinatario: tel1, nome: nomeContato });
@@ -554,16 +649,17 @@ app.post('/enviar-lote-streaming', async (req, res) => {
           }
         }
 
-        // Se o contato possui telefone 2 preenchido, dispara o WhatsApp 2 secundário
         if (tel2 && String(tel2).trim() !== '' && sockUsuario) {
           try {
             const jid2 = formatarNumeroWhatsApp(tel2);
             await sockUsuario.sendMessage(jid2, { text: mensagemPersonalizada });
 
-            // Registra o envio de WhatsApp 2 no banco de dados
             await new Promise((resolve) => {
               const queryWp2 = `INSERT INTO whatsapp (nome, tel1, menssagem, usuario_id) VALUES (?, ?, ?, ?)`;
-              db.query(queryWp2, [nomeContato, tel2, mensagemPersonalizada, userId], () => resolve());
+              db.query(queryWp2, [nomeContato, tel2, mensagemPersonalizada, userId], (err) => {
+                  if (err) console.error("Erro ao inserir wp2 no banco:", err);
+                  resolve(); // Resolve mesmo com erro para não travar o loop
+              });
             });
 
             sendEvent({ tipo: 'sucesso', canal: 'whatsapp2', destinatario: tel2, nome: nomeContato });
@@ -572,9 +668,8 @@ app.post('/enviar-lote-streaming', async (req, res) => {
           }
         }
 
-        // Se não for o último contato da lista, aplica uma pausa aleatória para evitar banimento por spam
         if (i < contatos.length - 1) {
-          const msEspera = tempoAleatorio(1.5, 4); // Intervalo randômico entre 1.5 e 4 minutos
+          const msEspera = tempoAleatorio(1.5, 4);
           const minutosCalculados = (msEspera / 60000).toFixed(2);
           
           sendEvent({ tipo: 'espera', minutos: minutosCalculados });
@@ -582,14 +677,53 @@ app.post('/enviar-lote-streaming', async (req, res) => {
         }
       }
 
-      // Emite o evento finalizando o processamento do lote
-      sendEvent({ tipo: 'fim' });
-      res.end();
+      // Só envia o evento de "fim" se a conexão ainda estiver ativa
+      if(clienteConectado){
+          sendEvent({ tipo: 'fim' });
+          res.end();
+      }
     });
   });
 });
 
-// Inicializa o servidor Express escutando na porta especificada
-app.listen(port, () => {
-  console.log(`🚀 Servidor rodando na porta ${port}`);
+// ==========================================
+// ROTA CORINGA PARA O REACT ROUTER (DIST)
+// ==========================================
+// Deve ficar após as rotas de API e antes do app.listen, acionada somente se a pasta existir
+if (hasDistFolder) {
+  app.get(/(.*)/, (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
+
+// Inicializa o servidor Express escutando em 0.0.0.0 na porta especificada
+app.listen(port, '0.0.0.0', () => {
+  console.log(`🚀 Servidor rodando na porta ${port} (Acessível na rede e em ${BASE_URL})`);
+  
+  // ==========================================
+  // VERIFICADOR DE COMPORTAMENTO & LOGS EXIGIDOS
+  // ==========================================
+  console.log(`🔍 [VERIFICADOR DE COMPORTAMENTO]: O sistema está rodando em modo: ${sistemaComportamento}`);
+  console.log(`📊 [BANCO DE DADOS]: Conexão estabelecida com sucesso! Banco de dados encontrado.`);
+  console.log(`🤖 [AGENTE DE IA]: A API do Agente de IA (Google Gen AI) está ${aiStatusFuncional ? 'funcionando corretamente' : 'com falha na inicialização'}.`);
+  
+  // Exibição das URLs com IPs e portas para conexão
+  console.log(`🌐 [URLS DE CONEXÃO DISPONÍVEIS]:`);
+  console.log(`   - Local:    http://localhost:${port}`);
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const net of interfaces[name]) {
+      if (net.family === 'IPv4' && !net.internal) {
+        console.log(`   - Rede (IP): http://${net.address}:${port}`);
+      }
+    }
+  }
+  console.log(`   - Domínio Base: ${BASE_URL}`);
+
+  // Verificação detalhada da pasta Dist e modo de homologação/produção
+  if (hasDistFolder) {
+    console.log(`📁 [PASTA DIST]: Pasta 'dist' encontrada! Estamos em modo PRODUÇÃO (Servindo o frontend integrado).`);
+  } else {
+    console.log(`⚠️ [PASTA DIST]: Pasta 'dist' NÃO foi encontrada! Backend e frontend estão rodando separadamente e estamos em fase de HOMOLOGAÇÃO.`);
+  }
 });

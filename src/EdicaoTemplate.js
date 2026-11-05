@@ -1,22 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useParams } from 'react-router-dom';
+import { CONFIG_REDE } from './config';
 import './App.css';
 
 function EdicaoTemplate() {
-  // Captura o ID do template passado pela URL (caso exista na rota)
+  // Captura o ID do template passado pela URL
   const { id: routeId } = useParams();
   
-  // Estados para gerenciar o template atual, lista filtrada e lista completa
+  // Estados para gerenciar o template atual, lista e usuários
   const [template, setTemplate] = useState(null);
   const [templates, setTemplates] = useState([]);
-  const [todosTemplates, setTodosTemplates] = useState([]); // Guarda todos os templates carregados da API
   const [usuarios, setUsuarios] = useState([]);
   const [index, setIndex] = useState(0);
   const [searchId, setSearchId] = useState('');
-  const [filtroUsuario, setFiltroUsuario] = useState(''); // Estado para o select do Admin filtrar os outros usuários
 
-  // Gestão robusta de permissões e ID do usuário logado (lendo de forma flexível de ambos os Storages)
+  // Gestão de permissões
   const perfilLogado = (
     localStorage.getItem('perfil') || 
     sessionStorage.getItem('perfil') || 
@@ -31,84 +30,57 @@ function EdicaoTemplate() {
     ''
   ).trim();
 
-  // Verifica se o usuário atual possui privilégios administrativos
   const isAdmin = perfilLogado === 'admin' || perfilLogado === 'administrador';
 
-  // 1. Carrega a lista de usuários cadastrados (Executado apenas se for Administrador)
+  // 1. Carrega a lista de usuários (se for Admin)
   useEffect(() => {
     if (isAdmin) {
-      axios.get('http://localhost:3010/usuarios')
+      axios.get(`${CONFIG_REDE.URL_BACKEND}/usuarios`)
         .then((res) => setUsuarios(res.data))
         .catch((err) => console.error('Erro ao buscar usuários:', err));
     }
   }, [isAdmin]);
 
-  // 2. Carrega todos os templates do servidor e define a regra inicial de exibição baseada no perfil
+  // 2. CORREÇÃO PRINCIPAL: Busca diretamente o template pelo ID da rota se ele existir
   useEffect(() => {
-    axios.get('http://localhost:3010/templates')
+    if (routeId) {
+      // Busca cirúrgica do template exato pelo ID da URL (evita cair no ID 1)
+      axios.get(`${CONFIG_REDE.URL_BACKEND}/template/${routeId}`)
+        .then((res) => {
+          if (res.data) {
+            setTemplate(res.data);
+          }
+        })
+        .catch((err) => {
+          console.error('Erro ao buscar template específico:', err);
+          alert('Template não encontrado ou sem permissão de visualização.');
+        });
+    }
+
+    // Carrega a lista geral para manter o suporte aos botões de navegação (setas)
+    axios.get(`${CONFIG_REDE.URL_BACKEND}/templates`)
       .then((res) => {
         const lista = res.data || [];
-        setTodosTemplates(lista);
-
-        // Aplica o filtro inicial de exibição dependendo se é Admin ou Operador comum
         let listaFiltrada = lista;
         if (!isAdmin) {
-          // Operador comum vê estritamente apenas os templates criados por ele mesmo
           listaFiltrada = lista.filter(t => String(t.usuario_id) === String(usuarioIdLogado));
         }
-
         setTemplates(listaFiltrada);
 
-        // Se não houver templates disponíveis, limpa a tela
-        if (listaFiltrada.length === 0) {
-          setTemplate(null);
-          return;
-        }
-
-        // Se houver um ID na rota, tenta selecioná-lo diretamente
+        // Se houver ID na rota, ajusta o index correspondente na lista para as setas funcionarem
         if (routeId) {
           const alvoIndex = listaFiltrada.findIndex((t) => String(t.id) === String(routeId));
           if (alvoIndex !== -1) {
             setIndex(alvoIndex);
-            setTemplate(listaFiltrada[alvoIndex]);
-          } else {
-            // Realiza uma busca individual caso o template não esteja na lista filtrada atual
-            axios.get(`http://localhost:3010/template/${routeId}`)
-              .then((itemRes) => {
-                setTemplate(itemRes.data);
-              })
-              .catch(() => alert('Template não encontrado ou sem permissão de visualização.'));
           }
-        } else {
-          // Caso padrão: seleciona o primeiro item da lista
-          setIndex(0);
+        } else if (listaFiltrada.length > 0) {
+          // Se não tem ID na rota, seleciona o primeiro por padrão
           setTemplate(listaFiltrada[0]);
+          setIndex(0);
         }
       })
       .catch((err) => console.error('Erro ao listar templates:', err));
   }, [routeId, isAdmin, usuarioIdLogado]);
-
-  // 3. Atualiza a lista exibida em tela quando o Administrador altera o filtro de usuários
-  useEffect(() => {
-    if (!isAdmin) return;
-
-    let filtrados = todosTemplates;
-    if (filtroUsuario === 'meus') {
-      filtrados = todosTemplates.filter(t => String(t.usuario_id) === String(usuarioIdLogado));
-    } else if (filtroUsuario !== '') {
-      // Filtra por um ID de usuário específico selecionado no select
-      filtrados = todosTemplates.filter(t => String(t.usuario_id) === String(filtroUsuario));
-    }
-    // Se filtroUsuario estiver vazio (''), o Admin visualiza todos os templates do sistema
-
-    setTemplates(filtrados);
-    if (filtrados.length > 0) {
-      setIndex(0);
-      setTemplate(filtrados[0]);
-    } else {
-      setTemplate(null);
-    }
-  }, [filtroUsuario, todosTemplates, isAdmin, usuarioIdLogado]);
 
   // 4. Função para enviar a atualização do template atual para o backend
   const handleUpdate = async () => {
@@ -121,14 +93,10 @@ function EdicaoTemplate() {
         usuario_id: template.usuario_id ? Number(template.usuario_id) : null
       };
 
-      await axios.put(`http://localhost:3010/update/${template.id}`, payload);
+      await axios.put(`${CONFIG_REDE.URL_BACKEND}/update/${template.id}`, payload);
 
-      // Atualiza as listas em memória local para manter a consistência visual instantânea
-      const atualizarLista = (prev) =>
-        prev.map((t) => (t.id === template.id ? { ...t, ...payload } : t));
-
-      setTemplates(atualizarLista);
-      setTodosTemplates(atualizarLista);
+      // Atualiza a lista local em memória
+      setTemplates(prev => prev.map((t) => (t.id === template.id ? { ...t, ...payload } : t)));
 
       alert('Template atualizado com sucesso!');
     } catch (err) {
@@ -141,10 +109,9 @@ function EdicaoTemplate() {
   const handleSearch = async () => {
     if (!searchId.trim()) return;
     try {
-      const res = await axios.get(`http://localhost:3010/template/${searchId.trim()}`);
+      const res = await axios.get(`${CONFIG_REDE.URL_BACKEND}/template/${searchId.trim()}`);
       if (res.data) {
         const item = res.data;
-        // Validação de segurança para operadores comuns não acessarem templates de terceiros
         if (!isAdmin && String(item.usuario_id) !== String(usuarioIdLogado)) {
           alert('Você não tem permissão para visualizar este template.');
           return;
@@ -168,34 +135,6 @@ function EdicaoTemplate() {
     }
   };
 
-  // Renderização condicional caso nenhum template seja encontrado
-  if (!template && templates.length === 0) {
-    return (
-      <div className="container">
-        <h2 className="titulo">Edição de Template</h2>
-        {isAdmin && (
-          <div style={{ marginBottom: '15px' }}>
-            <label style={{ color: 'white', display: 'block', marginBottom: '5px' }}>Filtrar templates por:</label>
-            <select
-              value={filtroUsuario}
-              onChange={(e) => setFiltroUsuario(e.target.value)}
-              style={{ width: '100%', padding: '8px', borderRadius: '4px' }}
-            >
-              <option value="">Todos os usuários</option>
-              <option value="meus">Meus templates</option>
-              {usuarios.map((u) => (
-                <option key={u.id} value={u.id}>
-                  Templates de {u.nome || u.login}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-        <p style={{ color: 'white', marginTop: '20px' }}>Nenhum template encontrado.</p>
-      </div>
-    );
-  }
-
   // Tela de carregamento enquanto o template é buscado
   if (!template) {
     return (
@@ -209,31 +148,6 @@ function EdicaoTemplate() {
   return (
     <div className="container">
       <h2 className="titulo">Edição de Template</h2>
-
-      {/* Caixa de seleção exclusiva para o Admin filtrar os templates de outros usuários */}
-      {isAdmin && (
-        <div style={{ marginBottom: '15px', textAlign: 'left' }}>
-          <label style={{ color: 'white', display: 'block', marginBottom: '5px' }}>Filtrar visualização:</label>
-          <select
-            value={filtroUsuario}
-            onChange={(e) => setFiltroUsuario(e.target.value)}
-            style={{
-              width: '100%',
-              padding: '8px',
-              borderRadius: '4px',
-              boxSizing: 'border-box'
-            }}
-          >
-            <option value="">Todos os usuários</option>
-            <option value="meus">Apenas meus templates</option>
-            {usuarios.map((u) => (
-              <option key={u.id} value={u.id}>
-                Templates de {u.nome || u.login}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
 
       {/* Exibição visual do ID do template atual */}
       <div style={{ color: 'white', fontWeight: 'bold', marginBottom: '15px', textAlign: 'left' }}>

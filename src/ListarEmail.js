@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
+import { CONFIG_REDE } from './config';
 import './App.css';
 
 function ListarEmail() {
@@ -36,7 +37,7 @@ function ListarEmail() {
   // 1. Carrega a lista completa de usuários para alimentar o filtro do painel (Executado apenas se for administrador)
   useEffect(() => {
     if (isAdmin) {
-      axios.get('http://localhost:3010/usuarios')
+      axios.get(`${CONFIG_REDE.URL_BACKEND}/usuarios`)
         .then(res => setUsuarios(res.data))
         .catch(err => console.error('Erro ao buscar usuários:', err));
     }
@@ -44,7 +45,7 @@ function ListarEmail() {
 
   // 2. Função responsável por carregar os e-mails do backend, aplicando restrições de acordo com o perfil
   const carregarEmails = (idUsuario = '') => {
-    let url = 'http://localhost:3010/listarEmail?';
+    let url = `${CONFIG_REDE.URL_BACKEND}/listarEmail?`;
 
     if (isAdmin) {
       // Se for admin, pode filtrar por um usuário específico se selecionado no select

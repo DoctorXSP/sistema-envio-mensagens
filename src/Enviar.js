@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { CONFIG_REDE } from './config';
 import './App.css';
 
 export default function Enviar() {
@@ -39,22 +40,25 @@ export default function Enviar() {
   // 1. Carrega a lista de usuários cadastrados (Executado apenas se o usuário for Administrador)
   useEffect(() => {
     if (isAdmin) {
-      axios.get('http://localhost:3010/usuarios')
+      axios.get(`${CONFIG_REDE.URL_BACKEND}/usuarios`)
         .then(res => setUsuarios(res.data))
         .catch(err => console.error('Erro ao buscar usuários:', err));
     }
   }, [isAdmin]);
 
-  // 2. Carrega os templates disponíveis (filtrando por ID de usuário caso um esteja selecionado)
+  // 2. Carrega os templates disponíveis (filtrando por ID de usuário e exibindo apenas os ATIVOS)
   useEffect(() => {
     const idFiltro = isAdmin ? usuarioSelecionado : usuarioLogadoId;
-    const url = idFiltro
-      ? `http://localhost:3010/templates?usuario_id=${idFiltro}`
-      : 'http://localhost:3010/templates';
+    // Adicionamos o parâmetro apenas_ativos=true para garantir que o backend traga somente os ativos
+    let url = idFiltro
+      ? `${CONFIG_REDE.URL_BACKEND}/templates?usuario_id=${idFiltro}&apenas_ativos=true`
+      : `${CONFIG_REDE.URL_BACKEND}/templates?apenas_ativos=true`;
 
     axios.get(url)
       .then(res => {
-        setTemplates(res.data);
+        // Garantia extra via frontend filtrando por ativo (caso o backend não isole)
+        const apenasAtivos = (res.data || []).filter(t => Number(t.ativo) === 1);
+        setTemplates(apenasAtivos);
         setTemplateSelecionado('0');
         setAssunto('');
         setMensagem('');
@@ -97,8 +101,8 @@ export default function Enviar() {
     const msg = montarMensagem();
 
     // Abre as abas do WhatsApp Web/API para os números informados
-    if (tel1) window.open(`https://api.whatsapp.com/send?phone=55${tel1}&text=${texto}`, '_blank');
-    if (tel2) window.open(`https://api.whatsapp.com/send?phone=55${tel2}&text=${texto}`, '_blank');
+    if (tel1) window.open(`https://api.whatsapp.com/send?phone=55${tel1}&text=${texto}`, '_blank', 'noopener,noreferrer');
+    if (tel2) window.open(`https://api.whatsapp.com/send?phone=55${tel2}&text=${texto}`, '_blank', 'noopener,noreferrer');
 
     const autorIdFinal = isAdmin ? (usuarioSelecionado ? Number(usuarioSelecionado) : null) : Number(usuarioLogadoId);
 
@@ -113,7 +117,7 @@ export default function Enviar() {
     console.log('Enviando dados do WhatsApp:', payload);
 
     try {
-      const response = await axios.post('http://localhost:3010/whatsapp', payload, {
+      const response = await axios.post(`${CONFIG_REDE.URL_BACKEND}/whatsapp`, payload, {
         headers: {
           'Content-Type': 'application/json'
         }
@@ -144,12 +148,12 @@ export default function Enviar() {
 
     let mailto = `mailto:${email1}?subject=${assuntoFinal}&body=${corpoEncoded}`;
     if (email2) mailto += `&cc=${encodeURIComponent(email2)}`;
-    window.open(mailto, '_blank');
+    window.open(mailto, '_blank', 'noopener,noreferrer');
 
     console.log('Enviando dados do Email:', payload);
 
     try {
-      const response = await axios.post('http://localhost:3010/email', payload, {
+      const response = await axios.post(`${CONFIG_REDE.URL_BACKEND}/email`, payload, {
         headers: {
           'Content-Type': 'application/json'
         }
@@ -185,7 +189,7 @@ export default function Enviar() {
         </div>
       )}
 
-      {/* Seletor de Templates salvos no sistema */}
+      {/* Seletor de Templates salvos no sistema (Apenas Ativos) */}
       <div className="linha-template">
         <label htmlFor="templateSelect">Template</label>
         <select

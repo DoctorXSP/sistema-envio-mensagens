@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { QRCodeSVG } from 'qrcode.react';
+import { CONFIG_REDE } from './config';
 import './App.css';
 
 export default function EditarPerfil() {
@@ -51,7 +52,7 @@ export default function EditarPerfil() {
 
   // 1. Carrega a lista completa de usuários cadastrados no banco de dados ao iniciar o componente
   useEffect(() => {
-    axios.get('http://localhost:3010/usuarios')
+    axios.get(`${CONFIG_REDE.URL_BACKEND}/usuarios`)
       .then(res => {
         console.log('👥 [DEBUG] Usuários vindos do banco:', res.data);
         setUsuarios(res.data);
@@ -103,7 +104,7 @@ export default function EditarPerfil() {
   // 4. Função auxiliar para consultar o status atual do Baileys e atualizar o QR Code se necessário
   const verificarStatusWhatsApp = async (id) => {
     try {
-      const res = await axios.get(`http://localhost:3010/whatsapp/status/${id}`);
+      const res = await axios.get(`${CONFIG_REDE.URL_BACKEND}/whatsapp/status/${id}`);
       setStatusWp(res.data.status);
       if (res.data.status === 'conectado') {
         setQrCodeData(''); // Limpa o QR Code da tela automaticamente assim que a conexão é estabelecida
@@ -127,7 +128,7 @@ export default function EditarPerfil() {
     setCarregandoQr(true);
     setMensagem({ texto: 'Gerando QR Code do WhatsApp...', tipo: 'sucesso' });
     try {
-      const res = await axios.get(`http://localhost:3010/whatsapp/conectar/${idParaConectar}`);
+      const res = await axios.get(`${CONFIG_REDE.URL_BACKEND}/whatsapp/conectar/${idParaConectar}`);
       if (res.data.qr) {
         setQrCodeData(res.data.qr);
         setStatusWp('aguardando_scan');
@@ -170,14 +171,14 @@ export default function EditarPerfil() {
     };
 
     try {
-      await axios.put(`http://localhost:3010/usuarios/${usuarioIdAlvo}`, payload);
+      await axios.put(`${CONFIG_REDE.URL_BACKEND}/usuarios/${usuarioIdAlvo}`, payload);
       setMensagem({ texto: 'Perfil e credenciais atualizados com sucesso!', tipo: 'sucesso' });
       setPassword('');
       setConfirmPassword('');
       setGmailPass('');
 
       // Recarrega a lista de usuários do banco para manter a interface sincronizada
-      const res = await axios.get('http://localhost:3010/usuarios');
+      const res = await axios.get(`${CONFIG_REDE.URL_BACKEND}/usuarios`);
       setUsuarios(res.data);
 
       // Atualiza o nome armazenado no storage correto caso o usuário esteja editando a si mesmo

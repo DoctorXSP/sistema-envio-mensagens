@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { CONFIG_REDE } from './config';
 import './App.css';
 
 export default function InserirTemplateIA() {
@@ -45,7 +46,7 @@ export default function InserirTemplateIA() {
 
   // Carrega a lista de usuários cadastrados e define o valor inicial padrão com base nas permissões
   useEffect(() => {
-    axios.get('http://localhost:3010/usuarios')
+    axios.get(`${CONFIG_REDE.URL_BACKEND}/usuarios`)
       .then(res => {
         setUsuarios(res.data);
         if (isAdmin) {
@@ -81,8 +82,8 @@ export default function InserirTemplateIA() {
         iteracao: instrucaoIteracao // Caso seja uma segunda tentativa de ajuste / refinamento
       };
 
-      // Requisição POST para o backend processar a IA (Gemini)
-      const res = await axios.post('http://localhost:3010/gerar-template-ia', payloadIA);
+      // Requisição POST para o backend processar a IA (Gemini) utilizando o config.js
+      const res = await axios.post(`${CONFIG_REDE.URL_BACKEND}/gerar-template-ia`, payloadIA);
 
       // Valida se o backend retornou o array de opções esperado
       if (res.data && res.data.opcoes) {
@@ -124,7 +125,7 @@ export default function InserirTemplateIA() {
     };
 
     try {
-      const response = await axios.post('http://localhost:3010/insert', payloadFinal, {
+      const response = await axios.post(`${CONFIG_REDE.URL_BACKEND}/insert`, payloadFinal, {
         headers: { 'Content-Type': 'application/json' }
       });
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { CONFIG_REDE } from './config';
 import './App.css';
 
 function InserirTemplate() {
@@ -36,7 +37,7 @@ function InserirTemplate() {
 
   // 1. Carrega a lista de usuários cadastrados e define o valor inicial padrão com base nas permissões
   useEffect(() => {
-    axios.get('http://localhost:3010/usuarios')
+    axios.get(`${CONFIG_REDE.URL_BACKEND}/usuarios`)
       .then(res => {
         setUsuarios(res.data);
         
@@ -69,7 +70,7 @@ function InserirTemplate() {
     console.log('Enviando dados do formulário:', payload);
 
     try {
-      const response = await axios.post('http://localhost:3010/insert', payload, {
+      const response = await axios.post(`${CONFIG_REDE.URL_BACKEND}/insert`, payload, {
         headers: {
           'Content-Type': 'application/json'
         }

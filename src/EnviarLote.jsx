@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
+import { CONFIG_REDE } from './config';
 
 export default function EnviarLote() {
   // Estados para gerenciar os templates disponíveis e o selecionado
@@ -40,27 +41,30 @@ export default function EnviarLote() {
   // ==========================================
   useEffect(() => {
     if (isAdmin) {
-      axios.get('http://localhost:3010/usuarios')
+      axios.get(`${CONFIG_REDE.URL_BACKEND}/usuarios`)
         .then(res => setUsuarios(res.data))
         .catch(err => console.error('❌ [DEBUG] Erro ao buscar usuários:', err));
     }
   }, [isAdmin]);
 
   // ==========================================
-  // Carregar templates ao iniciar (filtrando por ID de usuário se selecionado)
+  // Carregar templates ao iniciar (filtrando por ID de usuário e exibindo apenas os ATIVOS)
   // ==========================================
   useEffect(() => {
-    console.log('🔍 [DEBUG] Iniciando busca de templates na API...');
+    console.log('🔍 [DEBUG] Iniciando busca de templates ativos na API...');
     
     const idFiltro = isAdmin ? usuarioSelecionado : usuarioLogadoId;
+    // Adicionado o parâmetro apenas_ativos=true para garantir que o backend traga somente os ativos
     const url = idFiltro
-      ? `http://localhost:3010/templates?usuario_id=${idFiltro}`
-      : 'http://localhost:3010/templates';
+      ? `${CONFIG_REDE.URL_BACKEND}/templates?usuario_id=${idFiltro}&apenas_ativos=true`
+      : `${CONFIG_REDE.URL_BACKEND}/templates?apenas_ativos=true`;
 
     axios.get(url)
       .then(res => {
-        console.log('✅ [DEBUG] Templates recebidos com sucesso:', res.data);
-        setTemplates(res.data);
+        console.log('✅ [DEBUG] Templates ativos recebidos com sucesso:', res.data);
+        // Garantia adicional no frontend filtrando por ativo
+        const apenasAtivos = (res.data || []).filter(t => Number(t.ativo) === 1);
+        setTemplates(apenasAtivos);
         setTemplateSelecionado('');
       })
       .catch(err => {
@@ -151,7 +155,7 @@ export default function EnviarLote() {
     console.log(`ℹ️ [DEBUG] Contexto de Envio -> Template ID: ${templateSelecionado} | Remetente ID: ${autorIdFinal}`);
 
     try {
-      const response = await fetch('http://localhost:3010/enviar-lote-streaming', {
+      const response = await fetch(`${CONFIG_REDE.URL_BACKEND}/enviar-lote-streaming`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -255,7 +259,7 @@ export default function EnviarLote() {
         </ul>
       </div>
 
-      {/* Controles de Importação e Seleção de Template */}
+      {/* Controles de Importação e Seleção de Template (Apenas Ativos) */}
       <div style={{ display: 'flex', gap: '20px', marginBottom: '20px', alignItems: 'center', flexWrap: 'wrap' }}>
         <div>
           <label style={{ display: 'block', marginBottom: '5px' }}>1. Selecione o Template:</label>

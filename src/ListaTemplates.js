@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import { CONFIG_REDE } from './config';
 import './App.css';
 
 function ListaTemplates() {
@@ -28,10 +29,11 @@ function ListaTemplates() {
   // Validação booleana para verificar se o usuário possui privilégios de administrador
   const isAdmin = perfilLogado === 'admin' || perfilLogado === 'administrador';
 
-  // Estado para persistir a preferência de exibição de templates ativos (salvo no localStorage)
+  // Estado para persistir a preferência de exibição de templates ativos (salvo no localStorage). 
+  // Alterado para vir como `true` por padrão caso não haja valor salvo anteriormente.
   const [mostrarSomenteAtivos, setMostrarSomenteAtivos] = useState(() => {
     const salvo = localStorage.getItem('mostrarSomenteAtivos');
-    return salvo !== null ? JSON.parse(salvo) : false;
+    return salvo !== null ? JSON.parse(salvo) : true;
   });
 
   // Hook de navegação do React Router DOM
@@ -45,7 +47,7 @@ function ListaTemplates() {
   // 1. Carrega a lista completa de usuários para alimentar o filtro (Executado apenas se for administrador)
   useEffect(() => {
     if (isAdmin) {
-      axios.get('http://localhost:3010/usuarios')
+      axios.get(`${CONFIG_REDE.URL_BACKEND}/usuarios`)
         .then(res => setUsuarios(res.data))
         .catch(err => console.error('Erro ao buscar usuários:', err));
     }
@@ -53,7 +55,7 @@ function ListaTemplates() {
 
   // 2. Função responsável por carregar os templates do servidor aplicando restrições de perfil
   const carregarTemplates = (idUsuario = '') => {
-    let url = 'http://localhost:3010/templates?';
+    let url = `${CONFIG_REDE.URL_BACKEND}/templates?`;
 
     if (isAdmin) {
       // Se for admin, pode filtrar por um autor específico se selecionado no select
@@ -73,8 +75,12 @@ function ListaTemplates() {
     carregarTemplates(usuarioSelecionado);
   }, [usuarioSelecionado]);
 
-  // Função para redirecionar o usuário para a tela de edição do template selecionado
+  // Função para redirecionar o usuário para a tela de edição utilizando o ID correto e único do registro
   const handleEdit = (id) => {
+    if (!id) {
+      alert('ID do template inválido.');
+      return;
+    }
     navigate(`/editar-template/${id}`);
   };
 
@@ -124,11 +130,11 @@ function ListaTemplates() {
       {/* Tabela estruturada para exibição dos templates */}
       <table className="tabela-templates" style={{ width: '100%', tableLayout: 'fixed' }}>
         <colgroup>
-          <col style={{ width: '8%' }} />                                     {/* ID */}
-          {isAdmin && <col style={{ width: '22.5%' }} />}                      {/* Autor */}
-          <col style={{ width: '7.2%' }} />                                    {/* Status */}
-          <col style={{ width: isAdmin ? '62.3%' : '84.8%' }} />               {/* Assunto */}
-          <col style={{ width: '8%' }} />                                      {/* Ações */}
+          <col style={{ width: '8%' }} />                                 {/* ID */}
+          {isAdmin && <col style={{ width: '22.5%' }} />}                 {/* Autor */}
+          <col style={{ width: '7.2%' }} />                               {/* Status */}
+          <col style={{ width: isAdmin ? '62.3%' : '84.8%' }} />          {/* Assunto */}
+          <col style={{ width: '8%' }} />                                  {/* Ações */}
         </colgroup>
         <thead>
           <tr>
@@ -147,7 +153,13 @@ function ListaTemplates() {
               <td>{template.ativo ? 'Ativo' : 'Inativo'}</td>
               <td style={{ wordBreak: 'break-word' }}>{template.assunto}</td>
               <td>
-                <button onClick={() => handleEdit(template.id)} style={{ padding: '4px 8px', whiteSpace: 'nowrap' }}>Editar</button>
+                <button 
+                  type="button" 
+                  onClick={() => handleEdit(template.id)} 
+                  style={{ padding: '4px 8px', whiteSpace: 'nowrap' }}
+                >
+                  Editar
+                </button>
               </td>
             </tr>
           ))}

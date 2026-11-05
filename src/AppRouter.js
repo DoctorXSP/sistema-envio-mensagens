@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
+import { CONFIG_REDE } from './config';
 import App from './App';
 import Enviar from './Enviar';
 import EnviarLote from './EnviarLote';
@@ -12,8 +13,65 @@ import ListarWhatsapp from './ListarWhatsapp';
 import ListarEmail from './ListarEmail';
 import CadastrarUsuario from './CadastrarUsuario';
 import EditarPerfil from './EditarPerfil';
+import Ajuda from './Ajuda'; // Novo componente de Manual de Uso / Ajuda
 import logo from './img/logo.png';
 import './App.css';
+
+// COMPONENTE DO BOTÃO FLUTUANTE DE AJUDA (? AJUDA)
+function BotaoAjudaFlutuante() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Se já estiver na página de ajuda, não exibe o botão flutuante
+  if (location.pathname === '/ajuda') return null;
+
+  // Mapeia a rota atual para a seção correspondente no manual
+  const obterPontoAjuda = () => {
+    const path = location.pathname;
+    if (path === '/enviar') return '#enviar';
+    if (path === '/enviar-lote') return '#enviar-lote';
+    if (path.includes('template')) return '#templates';
+    if (path === '/lista-whatsapp' || path === '/lista-email') return '#historico';
+    if (path === '/editar-perfil' || path === '/cadastrar-usuario') return '#perfil';
+    return '#home';
+  };
+
+  const handleClick = () => {
+    const secao = obterPontoAjuda();
+    navigate('/ajuda' + secao);
+  };
+
+  return (
+    <div 
+      onClick={handleClick}
+      title="Ajuda do Sistema"
+      style={{
+        position: 'fixed',
+        top: '20px',
+        right: '25px',
+        zIndex: 9999,
+        background: '#3b82f6',
+        color: 'white',
+        width: '45px',
+        height: '45px',
+        borderRadius: '50%',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+        boxShadow: '0 4px 10px rgba(0,0,0,0.3)',
+        transition: 'transform 0.2s',
+        border: '2px solid white'
+      }}
+      onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+      onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1.0)'}
+    >
+      <span style={{ fontSize: '20px', fontWeight: 'bold', lineHeight: '1' }}>?</span>
+      <span style={{ fontSize: '9px', fontWeight: 'bold', marginTop: '2px' }}>Ajuda</span>
+    </div>
+  );
+}
 
 // 1. COMPONENTE DE TELA DE LOGIN
 function LoginScreen({ onLoginSuccess }) {
@@ -27,7 +85,7 @@ function LoginScreen({ onLoginSuccess }) {
     setErro('');
 
     try {
-      const res = await axios.get('http://localhost:3010/usuarios');
+      const res = await axios.get(`${CONFIG_REDE.URL_BACKEND}/usuarios`);
       const usuarios = res.data;
       const usuarioEncontrado = usuarios.find(u => u.login === login);
 
@@ -69,7 +127,7 @@ function LoginScreen({ onLoginSuccess }) {
         <img 
           src={logo} 
           alt="Logo" 
-          style={{ maxWidth: '100px', height: 'auto' }} 
+          style={{ maxWidth: '100px', height: 'auto', marginTop: '-50px' }} 
         />
         <h2 style={{ 
           margin: 0,
@@ -159,18 +217,18 @@ function SidebarContent({ onLogout }) {
         <li><Link to="/lista-whatsapp">Lista de Whatsapp Enviados</Link></li>
         <li><Link to="/lista-email">Lista de e-Mail Enviados</Link></li>
         <li><Link to="/inserir-template">Inserir Template</Link></li>
-        <li><Link to="/inserir-template-ia">Inserir Template com IA 🤖</Link></li> {/* Novo item adicionado */}
+        <li><Link to="/inserir-template-ia">Inserir Template com IA 🤖</Link></li>
         <li><Link to="/lista-templates">Lista de Templates</Link></li>
         <li><Link to="/editar-template">Editar Template</Link></li>
-        
         <li><Link to="/editar-perfil">Editar Perfil</Link></li>
+        <li><Link to="/ajuda">Manual / Ajuda 📖</Link></li>
 
         {isAdmin && (
           <li><Link to="/cadastrar-usuario">Cadastrar Usuário</Link></li>
         )}
 
         <li>
-          <a href="#logoff" onClick={onLogout} style={{ color: '#ff6b6b', fontWeight: 'bold' }}>
+          <a href="#logoff" onClick={onLogout} rel="noopener noreferrer" style={{ color: '#ff6b6b', fontWeight: 'bold' }}>
             Desconectar / Sair
           </a>
         </li>
@@ -218,6 +276,7 @@ function AppRouter() {
     <Router>
       <div className="layout">
         <SidebarContent onLogout={handleLogout} />
+        <BotaoAjudaFlutuante />
         <main className="content">
           <Routes>
             <Route path="/" element={<App />} />
@@ -226,11 +285,12 @@ function AppRouter() {
             <Route path="/lista-whatsapp" element={<ListarWhatsapp />} />
             <Route path="/lista-email" element={<ListarEmail/>} />
             <Route path="/inserir-template" element={<InserirTemplate />} />
-            <Route path="/inserir-template-ia" element={<InserirTemplateIA />} /> {/* Nova rota mapeada */}
+            <Route path="/inserir-template-ia" element={<InserirTemplateIA />} />
             <Route path="/lista-templates" element={<ListaTemplates />} />
             <Route path="/editar-template" element={<EdicaoTemplate />} />
             <Route path="/editar-template/:id" element={<EdicaoTemplate />} />
             <Route path="/editar-perfil" element={<EditarPerfil />} />
+            <Route path="/ajuda" element={<Ajuda />} />
             {isAdmin && (
               <Route path="/cadastrar-usuario" element={<CadastrarUsuario />} />
             )}

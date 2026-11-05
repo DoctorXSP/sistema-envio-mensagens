@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { CONFIG_REDE } from './config';
 import './App.css';
 
 export default function CadastrarUsuario() {
@@ -43,8 +44,8 @@ export default function CadastrarUsuario() {
     };
 
     try {
-      // Requisição POST para o servidor cadastrar o usuário no banco MySQL
-      const response = await axios.post('http://localhost:3010/usuarios', payload, {
+      // Requisição POST para o servidor cadastrar o usuário no banco MySQL utilizando o config.js
+      const response = await axios.post(`${CONFIG_REDE.URL_BACKEND}/usuarios`, payload, {
         headers: {
           'Content-Type': 'application/json'
         }
