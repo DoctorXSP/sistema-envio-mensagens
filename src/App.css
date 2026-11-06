@@ -359,7 +359,7 @@ button {
       }
       .lista-container-whatsapp {
         width: 95%;
-        margin: 10px 20px;
+        margin: 20px 20px;
         color: white;
       }
       .modal-overlay {
@@ -550,7 +550,7 @@ button {
   .lista-container-whatsapp,
   .lista-container-email {
     width: 95% !important;
-    margin: 0 auto !important;
+    margin: 20px auto !important;
     padding: 0 !important;
     box-sizing: border-box;
   }
