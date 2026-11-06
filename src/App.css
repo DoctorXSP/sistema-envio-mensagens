@@ -574,4 +574,32 @@ button {
     overflow-x: auto;
   }
 }
+/* Estilo padrão para desktops e tablets (mantém a margem e o design original) */
+.botao-ajuda-manual {
+  text-align: center;
+  margin-left: 33%;
+  background-color: #10b981;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: bold;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+  display: inline-block;
+}
+
+.botao-ajuda-manual:hover {
+  background-color: #059669; /* Efeito hover opcional */
+}
+
+/* Responsividade para dispositivos móveis (max-width: 768px): Remove a margem esquerda */
+@media screen and (max-width: 768px) {
+  .botao-ajuda-manual {
+    margin-left: 0 !important;
+    display: block;
+    width: fit-content;
+    margin-right: auto;
+    margin-left: auto !important; /* Centraliza automaticamente no celular */
+  }
+}
 }
