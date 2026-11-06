@@ -12,10 +12,9 @@ body {
 }
 
 .sidebar {
-  width: 18%;
+  width: 100%;
   background-color: transparent;
   padding: 20px;
-  border-right: 1px solid #ccc;
   box-sizing: border-box;
 }
 
@@ -65,6 +64,15 @@ body {
   padding: 0;
   text-align: center;
   box-sizing: border-box;
+}
+/* Ajuste para o formulário ocupar 95% da largura em dispositivos móveis */
+@media screen and (max-width: 768px) {
+  .container {
+    width: 95% !important;
+    margin-top: 15px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
 }
 .container2 {
   width: 60%;
@@ -351,7 +359,7 @@ button {
       }
       .lista-container-whatsapp {
         width: 95%;
-        margin: 0 20px;
+        margin: 10px 20px;
         color: white;
       }
       .modal-overlay {
@@ -441,9 +449,129 @@ button {
       }
       .lista-container-email {
         width: 95%;
-        margin: 0 20px;
+        margin: 10px 20px;
         color: white;
       }
 
-      
-      
+/* --- ADIÇÕES PARA O MENU HAMBÚRGUER EM DISPOSITIVOS MÓVEIS --- */
+
+.mobile-header {
+  display: none;
+  background-color: #0C4DA2;
+  color: white;
+  padding: 15px 20px;
+  align-items: center;
+  gap: 15px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  border-bottom: 1px solid #ccc;
+}
+
+.menu-hamburger-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.mobile-title {
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.sidebar-container {
+  width: 18%;
+  border-right: 1px solid #ccc;
+  box-sizing: border-box;
+}
+
+.sidebar-overlay {
+  display: none;
+}
+
+/* Responsividade específica para celulares (max-width: 768px) */
+@media screen and (max-width: 768px) {
+  .mobile-header {
+    display: flex;
+  }
+
+  .layout {
+    flex-direction: column;
+    padding-top: 60px; /* Abre espaço para o header fixo do topo */
+  }
+
+  .sidebar-container {
+    position: fixed;
+    top: 0;
+    left: -280px; /* Esconde a barra lateral fora da tela */
+    width: 260px;
+    height: 100vh;
+    background-color: #0C4DA2;
+    z-index: 1100;
+    transition: left 0.3s ease-in-out;
+    box-shadow: 4px 0 10px rgba(0,0,0,0.4);
+    overflow-y: auto;
+  }
+
+  .sidebar-container.open {
+    left: 0; /* Desliza para dentro da tela quando aberto */
+  }
+
+  .sidebar {
+    width: 100%;
+    border-right: none;
+  }
+
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.6);
+    z-index: 1050;
+  }
+
+  .content {
+    width: 100%;
+    padding: 15px;
+  }
+  * --- AJUSTE DE RESPONSIVIDADE PARA LISTA DE WHATSAPP E EMAIL NO MOBILE --- */
+@media screen and (max-width: 768px) {
+  /* Garante que os containers das listas ocupe a largura correta sem extrapolar */
+  .lista-container,
+  .lista-container-whatsapp,
+  .lista-container-email {
+    width: 95% !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    box-sizing: border-box;
+  }
+
+  /* Ajusta campos de input, filtros e buscas para respeitarem os 100% da largura disponível */
+  .lista-container input,
+  .lista-container-whatsapp input,
+  .lista-container-email input,
+  .lista-container select,
+  .lista-container-whatsapp select,
+  .lista-container-email select {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Torna as tabelas roláveis horizontalmente caso sejam muito largas, evitando que quebrem a tela */
+  .lista-container-whatsapp,
+  .lista-container-email,
+  .lista-container {
+    overflow-x: auto;
+  }
+}
+}

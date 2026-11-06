@@ -281,9 +281,9 @@ ${iteracao}`;
 // ==========================================
 // ROTAS DE USUÁRIOS
 // ==========================================
-// Rota HTTP POST para cadastrar um novo usuário no sistema
+// Rota HTTP POST para cadastrar um novo usuário no sistema (atualizada com whatsapp)
 app.post('/usuarios', async (req, res) => {
-  const { nome, login, password, perfil, email, gmail_user, gmail_pass } = req.body;
+  const { nome, login, password, perfil, email, whatsapp, gmail_user, gmail_pass } = req.body;
   // Valida se os campos essenciais foram informados
   if (!login || !password || !email) {
     return res.status(400).json({ message: 'Login, senha e e-mail são obrigatórios.' });
@@ -292,20 +292,32 @@ app.post('/usuarios', async (req, res) => {
   try {
     // Aplica o hash de criptografia (bcrypt) na senha antes de salvar no banco
     const hashedPassword = await bcrypt.hash(password, 10);
-    const query = `INSERT INTO usuarios (nome, login, password, perfil, email, gmail_user, gmail_pass) VALUES (?, ?, ?, ?, ?, ?, ?)`;
-    // Executa a query de inserção no banco de dados MySQL
-    db.query(query, [nome || 'Usuário', login, hashedPassword, perfil || 'operador', email, gmail_user || email, gmail_pass || null], (err, result) => {
+    const query = `INSERT INTO usuarios (nome, login, password, perfil, email, whatsapp, gmail_user, gmail_pass) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+    
+    db.query(query, [nome || 'Usuário', login, hashedPassword, perfil || 'operador', email, whatsapp || null, gmail_user || email, gmail_pass || null], (err, result) => {
       if (err) return res.status(500).json({ message: 'Erro ao cadastrar usuário.', error: err });
-      res.status(201).json({ message: 'Usuário cadastrado com sucesso!', id: result.insertId });
+      
+      // Retorna sucesso e os dados básicos para o frontend exibir o modal de envio de credenciais
+      res.status(201).json({ 
+        message: 'Usuário cadastrado com sucesso!', 
+        id: result.insertId,
+        usuarioCriado: {
+          id: result.insertId,
+          nome: nome || 'Usuário',
+          login,
+          email,
+          whatsapp: whatsapp || ''
+        }
+      });
     });
   } catch (err) {
     res.status(500).json({ message: 'Erro ao processar senha.', error: err });
   }
 });
 
-// Rota HTTP GET para listar todos os usuários cadastrados (sem expor senhas)
+// Rota HTTP GET para listar todos os usuários cadastrados (incluindo whatsapp)
 app.get('/usuarios', (req, res) => {
-  db.query('SELECT id, nome, login, perfil, email, gmail_user FROM usuarios ORDER BY id', (err, results) => {
+  db.query('SELECT id, nome, login, perfil, email, whatsapp, gmail_user FROM usuarios ORDER BY id', (err, results) => {
     if (err) return res.status(500).json({ error: err });
     res.json(results);
   });
@@ -314,13 +326,13 @@ app.get('/usuarios', (req, res) => {
 // Rota HTTP PUT para atualizar dados de perfil, credenciais de e-mail ou senha de um usuário
 app.put('/usuarios/:id', async (req, res) => {
   const { id } = req.params;
-  const { nome, email, perfil, password, login, gmail_user, gmail_pass } = req.body;
+  const { nome, email, whatsapp, perfil, password, login, gmail_user, gmail_pass } = req.body;
   if (!nome || !email) return res.status(400).json({ message: 'Nome e e-mail são obrigatórios.' });
 
   try {
-    // Monta a query base de atualização dinâmica
-    let query = 'UPDATE usuarios SET nome = ?, email = ?, gmail_user = ?';
-    let params = [nome, email, gmail_user || email];
+    // Monta a query base de atualização dinâmica incluindo whatsapp
+    let query = 'UPDATE usuarios SET nome = ?, email = ?, whatsapp = ?, gmail_user = ?';
+    let params = [nome, email, whatsapp || null, gmail_user || email];
 
     // Se uma nova senha de app do Gmail foi informada, adiciona à query
     if (gmail_pass && gmail_pass.trim() !== '') {
@@ -374,24 +386,21 @@ app.post('/insert', (req, res) => {
   });
 });
 
-// Rota HTTP GET para listar templates aplicando restrições de perfil (Admin vê tudo, operador vê os seus)
+// Rota HTTP GET para listar templates aplicando restrições de perfil
 app.get('/templates', (req, res) => {
   const { usuario_id, perfil_logado, usuario_logado_id, apenas_ativos } = req.query;
   let query = `SELECT t.*, u.login AS autor_login, u.nome AS autor_nome FROM templates t LEFT JOIN usuarios u ON t.usuario_id = u.id WHERE 1=1`;
   const params = [];
 
-  // Se o solicitante não for admin, restringe a busca apenas aos templates do próprio usuário
   if (perfil_logado && perfil_logado !== 'admin') {
     if (!usuario_logado_id) return res.status(403).json({ message: 'Acesso negado.' });
     query += ' AND t.usuario_id = ?';
     params.push(usuario_logado_id);
   } else if (usuario_id) {
-    // Se o admin passou um filtro específico de usuário via query string
     query += ' AND t.usuario_id = ?';
     params.push(usuario_id);
   }
 
-  // Filtro opcional para retornar apenas templates ativos se solicitado
   if (apenas_ativos === 'true') {
     query += ' AND t.ativo = 1';
   }
@@ -432,7 +441,6 @@ app.post('/enviar-ajuda-feedback', async (req, res) => {
   }
 
   try {
-    // Busca um usuário administrador ou remetente padrão no banco para puxar as credenciais do Gmail configuradas
     db.query('SELECT * FROM usuarios WHERE perfil = "admin" LIMIT 1', async (err, results) => {
       if (err || results.length === 0) {
         return res.status(500).json({ message: 'Nenhum administrador com configuração de e-mail encontrada.' });
@@ -468,7 +476,6 @@ app.post('/enviar-ajuda-feedback', async (req, res) => {
 // ==========================================
 // ROTAS DE HISTÓRICO (EMAIL E WHATSAPP)
 // ==========================================
-// Rota HTTP POST para registrar o histórico de envio de e-mail no banco
 app.post('/email', (req, res) => {
   const { nome, email1, email2, assunto, menssagem, usuario_id } = req.body;
   db.query(`INSERT INTO email (nome, email1, email2, assunto, menssagem, usuario_id) VALUES (?, ?, ?, ?, ?, ?)`, [nome, email1, email2, assunto, menssagem, usuario_id || null], (err, results) => {
@@ -477,7 +484,6 @@ app.post('/email', (req, res) => {
   });
 });
 
-// Rota HTTP GET para listar o histórico de e-mails enviados com filtro por perfil
 app.get('/listarEmail', (req, res) => {
   const { usuario_id, perfil_logado, usuario_logado_id } = req.query;
   let query = `SELECT e.*, u.login AS autor_login, u.nome AS autor_nome FROM email e LEFT JOIN usuarios u ON e.usuario_id = u.id`;
@@ -499,7 +505,6 @@ app.get('/listarEmail', (req, res) => {
   });
 });
 
-// Rota HTTP POST para registrar o histórico de envio de WhatsApp no banco
 app.post('/whatsapp', (req, res) => {
   const { nome, tel1, tel2, menssagem, usuario_id } = req.body;
   db.query(`INSERT INTO whatsapp (nome, tel1, tel2, menssagem, usuario_id) VALUES (?, ?, ?, ?, ?)`, [nome, tel1, tel2, menssagem, usuario_id || null], (err, results) => {
@@ -508,7 +513,6 @@ app.post('/whatsapp', (req, res) => {
   });
 });
 
-// Rota HTTP GET para listar o histórico de disparos de WhatsApp com filtro por perfil
 app.get('/listarWhatsapp', (req, res) => {
   const { usuario_id, perfil_logado, usuario_logado_id } = req.query;
   let query = `SELECT w.*, u.login AS autor_login, u.nome AS autor_nome FROM whatsapp w LEFT JOIN usuarios u ON w.usuario_id = u.id`;
@@ -548,10 +552,8 @@ app.post('/enviar-lote-streaming', async (req, res) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
   
-  // Monitora se o cliente fechou a aba ou cancelou o disparo para abortar o loop
   let clienteConectado = true;
   req.on('close', () => {
-    console.log('⚠️ Cliente fechou a conexão de streaming. Abortando envios...');
     clienteConectado = false;
   });
 
@@ -586,11 +588,7 @@ app.post('/enviar-lote-streaming', async (req, res) => {
       sendEvent({ tipo: 'inicio', total: contatos.length });
 
       for (let i = 0; i < contatos.length; i++) {
-        // Se o cliente desconectar no meio do processo, o loop é interrompido
-        if (!clienteConectado) {
-            console.log('🛑 Disparo interrompido pelo usuário no contato: ' + i);
-            break;
-        }
+        if (!clienteConectado) break;
 
         const contato = contatos[i];
         const nomeContato = contato.nome || 'Cliente';
@@ -618,10 +616,7 @@ app.post('/enviar-lote-streaming', async (req, res) => {
 
             await new Promise((resolve) => {
               const queryEmail = `INSERT INTO email (nome, email1, assunto, menssagem, usuario_id) VALUES (?, ?, ?, ?, ?)`;
-              db.query(queryEmail, [nomeContato, emailContato, template.assunto, mensagemPersonalizada, userId], (err) => {
-                  if (err) console.error("Erro ao inserir email no banco:", err);
-                  resolve(); // Resolve mesmo com erro para não travar o loop
-              });
+              db.query(queryEmail, [nomeContato, emailContato, template.assunto, mensagemPersonalizada, userId], () => resolve());
             });
 
             sendEvent({ tipo: 'sucesso', canal: 'email', destinatario: emailContato, nome: nomeContato });
@@ -637,10 +632,7 @@ app.post('/enviar-lote-streaming', async (req, res) => {
 
             await new Promise((resolve) => {
               const queryWp1 = `INSERT INTO whatsapp (nome, tel1, menssagem, usuario_id) VALUES (?, ?, ?, ?)`;
-              db.query(queryWp1, [nomeContato, tel1, mensagemPersonalizada, userId], (err) => {
-                  if (err) console.error("Erro ao inserir wp1 no banco:", err);
-                  resolve(); // Resolve mesmo com erro para não travar o loop
-              });
+              db.query(queryWp1, [nomeContato, tel1, mensagemPersonalizada, userId], () => resolve());
             });
 
             sendEvent({ tipo: 'sucesso', canal: 'whatsapp1', destinatario: tel1, nome: nomeContato });
@@ -656,10 +648,7 @@ app.post('/enviar-lote-streaming', async (req, res) => {
 
             await new Promise((resolve) => {
               const queryWp2 = `INSERT INTO whatsapp (nome, tel1, menssagem, usuario_id) VALUES (?, ?, ?, ?)`;
-              db.query(queryWp2, [nomeContato, tel2, mensagemPersonalizada, userId], (err) => {
-                  if (err) console.error("Erro ao inserir wp2 no banco:", err);
-                  resolve(); // Resolve mesmo com erro para não travar o loop
-              });
+              db.query(queryWp2, [nomeContato, tel2, mensagemPersonalizada, userId], () => resolve());
             });
 
             sendEvent({ tipo: 'sucesso', canal: 'whatsapp2', destinatario: tel2, nome: nomeContato });
@@ -677,10 +666,9 @@ app.post('/enviar-lote-streaming', async (req, res) => {
         }
       }
 
-      // Só envia o evento de "fim" se a conexão ainda estiver ativa
-      if(clienteConectado){
-          sendEvent({ tipo: 'fim' });
-          res.end();
+      if (clienteConectado) {
+        sendEvent({ tipo: 'fim' });
+        res.end();
       }
     });
   });
@@ -689,41 +677,16 @@ app.post('/enviar-lote-streaming', async (req, res) => {
 // ==========================================
 // ROTA CORINGA PARA O REACT ROUTER (DIST)
 // ==========================================
-// Deve ficar após as rotas de API e antes do app.listen, acionada somente se a pasta existir
 if (hasDistFolder) {
   app.get(/(.*)/, (req, res) => {
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
 
-// Inicializa o servidor Express escutando em 0.0.0.0 na porta especificada
+// Inicializa o servidor Express
 app.listen(port, '0.0.0.0', () => {
   console.log(`🚀 Servidor rodando na porta ${port} (Acessível na rede e em ${BASE_URL})`);
-  
-  // ==========================================
-  // VERIFICADOR DE COMPORTAMENTO & LOGS EXIGIDOS
-  // ==========================================
   console.log(`🔍 [VERIFICADOR DE COMPORTAMENTO]: O sistema está rodando em modo: ${sistemaComportamento}`);
-  console.log(`📊 [BANCO DE DADOS]: Conexão estabelecida com sucesso! Banco de dados encontrado.`);
-  console.log(`🤖 [AGENTE DE IA]: A API do Agente de IA (Google Gen AI) está ${aiStatusFuncional ? 'funcionando corretamente' : 'com falha na inicialização'}.`);
-  
-  // Exibição das URLs com IPs e portas para conexão
-  console.log(`🌐 [URLS DE CONEXÃO DISPONÍVEIS]:`);
-  console.log(`   - Local:    http://localhost:${port}`);
-  const interfaces = os.networkInterfaces();
-  for (const name of Object.keys(interfaces)) {
-    for (const net of interfaces[name]) {
-      if (net.family === 'IPv4' && !net.internal) {
-        console.log(`   - Rede (IP): http://${net.address}:${port}`);
-      }
-    }
-  }
-  console.log(`   - Domínio Base: ${BASE_URL}`);
-
-  // Verificação detalhada da pasta Dist e modo de homologação/produção
-  if (hasDistFolder) {
-    console.log(`📁 [PASTA DIST]: Pasta 'dist' encontrada! Estamos em modo PRODUÇÃO (Servindo o frontend integrado).`);
-  } else {
-    console.log(`⚠️ [PASTA DIST]: Pasta 'dist' NÃO foi encontrada! Backend e frontend estão rodando separadamente e estamos em fase de HOMOLOGAÇÃO.`);
-  }
+  console.log(`📊 [BANCO DE DADOS]: Conexão estabelecida com sucesso!`);
+  console.log(`🤖 [AGENTE DE IA]: A API do Agente de IA está ${aiStatusFuncional ? 'funcionando corretamente' : 'com falha na inicialização'}.`);
 });

@@ -6,14 +6,14 @@ import App from './App';
 import Enviar from './Enviar';
 import EnviarLote from './EnviarLote';
 import InserirTemplate from './InserirTemplate';
-import InserirTemplateIA from './InserirTemplateIA'; // Novo componente de IA integrado
+import InserirTemplateIA from './InserirTemplateIA'; 
 import EdicaoTemplate from './EdicaoTemplate';
 import ListaTemplates from './ListaTemplates';
 import ListarWhatsapp from './ListarWhatsapp';
 import ListarEmail from './ListarEmail';
 import CadastrarUsuario from './CadastrarUsuario';
 import EditarPerfil from './EditarPerfil';
-import Ajuda from './Ajuda'; // Novo componente de Manual de Uso / Ajuda
+import Ajuda from './Ajuda'; 
 import logo from './img/logo.png';
 import './App.css';
 
@@ -22,10 +22,8 @@ function BotaoAjudaFlutuante() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Se já estiver na página de ajuda, não exibe o botão flutuante
   if (location.pathname === '/ajuda') return null;
 
-  // Mapeia a rota atual para a seção correspondente no manual
   const obterPontoAjuda = () => {
     const path = location.pathname;
     if (path === '/enviar') return '#enviar';
@@ -203,14 +201,14 @@ function LoginScreen({ onLoginSuccess }) {
 }
 
 // 2. COMPONENTE DA BARRA LATERAL (SIDEBAR) COM LOGOFF SEGURO
-function SidebarContent({ onLogout }) {
+function SidebarContent({ onLogout, onCloseMobile }) {
   const perfilLogado = localStorage.getItem('perfil') || sessionStorage.getItem('perfil');
   const isAdmin = perfilLogado === 'admin';
 
   return (
     <nav className="sidebar">
       <h3>Sistema de <br />Envio de Mensagens</h3>
-      <ul>
+      <ul onClick={onCloseMobile}>
         <li><Link to="/">Home</Link></li>
         <li><Link to="/enviar">Enviar</Link></li>
         <li><Link to="/enviar-lote">Envio em Lote</Link></li>
@@ -241,6 +239,7 @@ function SidebarContent({ onLogout }) {
 // 3. ESTRUTURA PRINCIPAL DO Roteador
 function AppRouter() {
   const [isLogged, setIsLogged] = useState(false);
+  const [menuAberto, setMenuAberto] = useState(false);
 
   useEffect(() => {
     const usuarioId = localStorage.getItem('usuario_id') || sessionStorage.getItem('usuario_id');
@@ -268,14 +267,37 @@ function AppRouter() {
     return <LoginScreen onLoginSuccess={() => setIsLogged(true)} />;
   }
 
-  // Verifica o perfil para proteger a rota de cadastro de usuário
   const perfilLogado = localStorage.getItem('perfil') || sessionStorage.getItem('perfil');
   const isAdmin = perfilLogado === 'admin';
 
   return (
     <Router>
       <div className="layout">
-        <SidebarContent onLogout={handleLogout} />
+        {/* Barra superior mobile com o botão do menu hambúrguer */}
+        <header className="mobile-header">
+          <button 
+            className="menu-hamburger-btn" 
+            onClick={() => setMenuAberto(!menuAberto)}
+            aria-label="Abrir menu"
+          >
+            ☰
+          </button>
+          <span className="mobile-title">Envio de Mensagens</span>
+        </header>
+
+        {/* Overlay escuro quando o menu estiver aberto no mobile */}
+        {menuAberto && (
+          <div className="sidebar-overlay" onClick={() => setMenuAberto(false)} />
+        )}
+
+        {/* Sidebar com classe condicional para abrir/fechar no mobile */}
+        <div className={`sidebar-container ${menuAberto ? 'open' : ''}`}>
+          <SidebarContent 
+            onLogout={handleLogout} 
+            onCloseMobile={() => setMenuAberto(false)} 
+          />
+        </div>
+
         <BotaoAjudaFlutuante />
         <main className="content">
           <Routes>
